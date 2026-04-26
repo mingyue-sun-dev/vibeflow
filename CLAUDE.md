@@ -37,9 +37,10 @@ User logs in → onAuthStateChange(SIGNED_IN) → restoreSession(user.id)
 
 User types mood
   → POST /api/generate-playlist  { mood, userId }
-      → OpenAI: mood → 10–12 Spotify search intents (JSON)
-      → lib/spotify.ts searchMany(): parallel Spotify searches + artist top-track lookups
+      → OpenAI: mood → 10–12 Spotify search intents (JSON); mood field is a 3-5 word vibe label
+      → lib/spotify.ts searchMany(): parallel Spotify searches (6 results/query) + artist top-track lookups
       → dedup by ID and normalized fingerprint (strips remasters/live/radio edits)
+      → if result < 10 tracks: fallback OpenAI call for broader style queries, results merged + deduped
       → cap at 14 tracks, save to Supabase (playlists + playlist_versions)
   → UI: songs + version appear in PlaylistPanel
 
@@ -66,6 +67,8 @@ Manage users via Supabase dashboard → Authentication → Users, or `select id,
 
 All state lives in `app/page.tsx` via `useState`. No global store. On `SIGNED_OUT`, `clearPlaylistState()` resets all playlist/chat/version state. On `SIGNED_IN`/`INITIAL_SESSION`, `restoreSession(userId)` rehydrates from Supabase.
 
+`activeSongId: string | null` tracks the currently open Spotify embed player. It lives in `page.tsx` (not `PlaylistPanel`) so the iframe persists when the user switches mobile tabs — the embed is rendered outside the tab-conditional blocks, above the tab bar on mobile and at the bottom of the left aside on desktop. Reset explicitly in `handleGenerate`, `handleNewPlaylist`, and `clearPlaylistState`; intentionally NOT reset on chat transforms or version reverts so playback continues while the user refines. Do not use a `useEffect([songs])` to reset it — Supabase re-fires auth events on tab focus which calls `restoreSession` → `setSongs`, and that would kill the player.
+
 ### Key files
 
 - `app/page.tsx` — all page state and event handlers; renders 3-panel desktop / tab-based mobile layout; gates UI on auth state
@@ -85,4 +88,4 @@ API routes instantiate their own `supabase` and `openai` clients at module level
 
 ### Spotify dedup logic
 
-`trackFingerprint` in `lib/spotify.ts` normalizes title + primary artist to catch radio edits, remasters, and live versions. `searchMany` also enforces a `MAX_PER_ARTIST = 2` cap unless one artist dominates the query set.
+`trackFingerprint` in `lib/spotify.ts` normalizes title + primary artist to catch radio edits, remasters, and live versions. `searchMany` enforces a `MAX_PER_ARTIST = 2` cap (lifted to ∞ for a dominant artist) — the cap key uses the primary artist only (first comma-split), consistent with `trackFingerprint`. A dominant artist is one appearing in ≥3 queries or >40% of the query set.

@@ -6,6 +6,8 @@ interface PlaylistItemProps {
   song: Song;
   index: number;
   isNew?: boolean;
+  isActive?: boolean;
+  onSelect?: (id: string) => void;
 }
 
 function formatDuration(ms: number): string {
@@ -23,16 +25,25 @@ function SpotifyIcon() {
   );
 }
 
-export function PlaylistItem({ song, index, isNew = false }: PlaylistItemProps) {
+export function PlaylistItem({ song, index, isNew = false, isActive = false, onSelect }: PlaylistItemProps) {
   return (
     <div
-      className={`group flex items-center gap-3 px-4 py-2 hover:bg-zinc-800/50 transition-colors ${
-        isNew ? 'song-new' : ''
-      }`}
+      onClick={() => onSelect?.(song.id)}
+      className={`group flex items-center gap-3 px-4 py-2 transition-colors cursor-pointer ${
+        isActive ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
+      } ${isNew ? 'song-new' : ''}`}
     >
-      {/* Index */}
+      {/* Index / playing indicator */}
       <div className="w-4 shrink-0 flex items-center justify-center">
-        <span className="text-xs text-zinc-700 tabular-nums">{index + 1}</span>
+        {isActive ? (
+          <span className="flex items-end gap-px h-3">
+            <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '60%', animationDelay: '0ms', animationDuration: '0.8s' }} />
+            <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '100%', animationDelay: '150ms', animationDuration: '0.8s' }} />
+            <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '40%', animationDelay: '300ms', animationDuration: '0.8s' }} />
+          </span>
+        ) : (
+          <span className="text-xs text-zinc-700 tabular-nums">{index + 1}</span>
+        )}
       </div>
 
       {/* Album image */}
@@ -62,6 +73,7 @@ export function PlaylistItem({ song, index, isNew = false }: PlaylistItemProps) 
             target="_blank"
             rel="noopener noreferrer"
             title="Open in Spotify"
+            onClick={e => e.stopPropagation()}
             className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-zinc-300"
           >
             <SpotifyIcon />

@@ -39,6 +39,12 @@ export default function Home() {
   // Mobile tab
   const [activeTab, setActiveTab] = useState<'playlist' | 'chat' | 'controls'>('chat');
 
+  // Embed player — lifted here so it persists across mobile tab switches
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  function handleSongSelect(id: string) {
+    setActiveSongId(prev => prev === id ? null : id);
+  }
+
   // Loading
   const [isGenerating, setIsGenerating] = useState(false);
   const [isTransforming, setIsTransforming] = useState(false);
@@ -92,6 +98,7 @@ export default function Home() {
     setNewSongIds(new Set());
     setSavedPlaylists([]);
     setError('');
+    setActiveSongId(null);
   }
 
   // ── Restore data for logged-in user ──────────────────────────────────────
@@ -199,6 +206,7 @@ export default function Home() {
       setVersions([version]);
       setMessages([]);
       setMood('');
+      setActiveSongId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -330,6 +338,7 @@ export default function Home() {
     setCurrentMood('');
     setNewSongIds(new Set());
     setError('');
+    setActiveSongId(null);
   }
 
   const hasPlaylist = songs.length > 0;
@@ -523,6 +532,22 @@ export default function Home() {
                 newSongIds={newSongIds}
                 isTransforming={isTransforming}
                 onRevert={handleRevert}
+                activeSongId={activeSongId}
+                onSongSelect={handleSongSelect}
+              />
+            </div>
+          )}
+          {activeSongId && (
+            <div className="shrink-0 border-t border-zinc-800">
+              <iframe
+                key={activeSongId}
+                src={`https://open.spotify.com/embed/track/${activeSongId}?utm_source=generator&theme=0`}
+                width="100%"
+                height="152"
+                frameBorder="0"
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="eager"
+                className="block"
               />
             </div>
           )}
@@ -597,6 +622,8 @@ export default function Home() {
                     newSongIds={newSongIds}
                     isTransforming={isTransforming}
                     onRevert={handleRevert}
+                    activeSongId={activeSongId}
+                    onSongSelect={handleSongSelect}
                   />
                 </div>
               )}
@@ -649,6 +676,22 @@ export default function Home() {
             </>
           )}
         </div>
+
+        {/* Persistent embed player — survives tab switches */}
+        {activeSongId && (
+          <div className="shrink-0 border-t border-zinc-800">
+            <iframe
+              key={activeSongId}
+              src={`https://open.spotify.com/embed/track/${activeSongId}?utm_source=generator&theme=0`}
+              width="100%"
+              height="152"
+              frameBorder="0"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="eager"
+              className="block"
+            />
+          </div>
+        )}
 
         {/* Bottom tab bar */}
         <nav className="border-t border-zinc-800 shrink-0 flex bg-zinc-950">

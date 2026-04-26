@@ -216,7 +216,7 @@ export async function searchMany(queries: SearchIntent[], perQuery = 4): Promise
         if (seenIds.has(song.id)) continue;
         const fp = trackFingerprint(song);
         if (seenFingerprints.has(fp)) continue;
-        const artistKey = song.artist.toLowerCase();
+        const artistKey = song.artist.split(',')[0].toLowerCase().trim();
         const cap = dominantArtist && artistKey === dominantArtist ? Infinity : MAX_PER_ARTIST;
         if ((artistCount.get(artistKey) ?? 0) >= cap) continue;
 

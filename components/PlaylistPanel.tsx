@@ -12,6 +12,8 @@ interface PlaylistPanelProps {
   newSongIds: Set<string>;
   isTransforming: boolean;
   onRevert: (version: PlaylistVersion) => void;
+  activeSongId: string | null;
+  onSongSelect: (id: string) => void;
 }
 
 export function PlaylistPanel({
@@ -22,6 +24,8 @@ export function PlaylistPanel({
   newSongIds,
   isTransforming,
   onRevert,
+  activeSongId,
+  onSongSelect,
 }: PlaylistPanelProps) {
   if (songs.length === 0) {
     return (
@@ -55,6 +59,8 @@ export function PlaylistPanel({
             song={song}
             index={i}
             isNew={newSongIds.has(song.id)}
+            isActive={activeSongId === song.id}
+            onSelect={onSongSelect}
           />
         ))}
       </div>

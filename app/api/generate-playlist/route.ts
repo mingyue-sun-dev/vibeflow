@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
-import { searchMany } from '@/lib/spotify';
+import { searchMany, trackFingerprint } from '@/lib/spotify';
 import { SearchIntent } from '@/types';
 
 const supabase = createClient(
@@ -26,15 +26,16 @@ export async function POST(req: NextRequest) {
     messages: [
       {
         role: 'system',
-        content: `You are a music curator. Given a user mood, generate 10–12 Deezer search queries to find real songs matching that mood.
+        content: `You are a music curator. Given a user mood, generate 10–12 Spotify search queries to find real songs matching that mood.
 
 RULES:
-- Return ONLY valid JSON: {"mood": "string", "searches": [{"query": "string", "genre": "string"}]}
+- Return ONLY valid JSON: {"mood": "3-5 word vibe label", "searches": [{"query": "string", "genre": "string"}]}
 - Mix two query types:
-    TYPE A — Specific song: use Deezer field syntax → artist:"Bon Iver" track:"Holocene"
+    TYPE A — Specific song: use Spotify field syntax → artist:"Bon Iver" track:"Holocene"
     TYPE B — Style/mood search: descriptive keywords only → rainy lo-fi piano beats study
 - Use ~6 Type A queries (known songs that fit) and ~4–6 Type B queries (style/mood/genre descriptors)
 - "genre" is a short UI label (e.g. "Indie Folk", "Lo-Fi", "Alt Pop")
+- "mood" is a concise 3-5 word label capturing the interpreted vibe (e.g. "melancholic late-night indie")
 - Do NOT mix artist names into style queries (keep them separate)
 - Match the emotional tone, energy level, and aesthetic of the mood precisely
 - No commentary outside the JSON`,
@@ -56,10 +57,43 @@ RULES:
   // 2. Search Spotify for each intent in parallel
   let songs;
   try {
-    songs = await searchMany(aiOutput.searches, 5);
+    songs = await searchMany(aiOutput.searches, 6);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Spotify error: ${msg}` }, { status: 500 });
+  }
+
+  // Fallback: if fewer than 10 tracks, ask OpenAI for broader style queries and retry
+  if (songs.length < 10) {
+    try {
+      const fallbackCompletion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.8,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are a music curator. Generate 6 broader Spotify style/mood search queries. Return ONLY valid JSON: {"searches": [{"query": "string", "genre": "string"}]}`,
+          },
+          {
+            role: 'user',
+            content: `Mood: "${mood}". Initial search found only ${songs.length} tracks. Generate broader genre and mood keyword queries (TYPE B only — no artist names).`,
+          },
+        ],
+      });
+      const fallbackOutput = JSON.parse(fallbackCompletion.choices[0].message.content!);
+      if (fallbackOutput.searches?.length > 0) {
+        const moreSongs = await searchMany(fallbackOutput.searches, 6);
+        const existingIds = new Set(songs.map((s) => s.id));
+        const existingFps = new Set(songs.map(trackFingerprint));
+        const uniqueMore = moreSongs.filter(
+          (s) => !existingIds.has(s.id) && !existingFps.has(trackFingerprint(s))
+        );
+        songs = [...songs, ...uniqueMore];
+      }
+    } catch {
+      // fallback failed; proceed with what we have
+    }
   }
 
   if (songs.length === 0) {

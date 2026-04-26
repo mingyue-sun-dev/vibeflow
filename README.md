@@ -119,6 +119,7 @@ open [localhost:3000](http://localhost:3000).
 - **chat refinement** — conversational edits that actually understand intent
 - **version history** — every change is saved, revert anytime
 - **saved bookmarks** — pin the versions worth keeping
+- **in-app player** — click any track to open the Spotify embed player inline; persists while you chat or switch tabs
 - **open in Spotify** — one click from any track to open it in Spotify
 - **cross-device persistence** — log in from anywhere, your playlists follow
 - **search history** — recent moods in a dropdown, one click to reuse
