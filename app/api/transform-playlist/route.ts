@@ -12,16 +12,16 @@ const supabase = createClient(
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
-  const { playlistId, sessionId, instruction, currentPlaylist } = await req.json();
+  const { playlistId, userId, instruction, currentPlaylist } = await req.json();
 
-  if (!playlistId || !sessionId || !instruction?.trim() || !currentPlaylist) {
+  if (!playlistId || !userId || !instruction?.trim() || !currentPlaylist) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
   // 1. Save user message
   await supabase.from('chat_messages').insert({
     playlist_id: playlistId,
-    session_id: sessionId,
+    user_id: userId,
     role: 'user',
     content: instruction,
   });
@@ -125,7 +125,7 @@ RULES:
     .from('playlist_versions')
     .insert({
       playlist_id: playlistId,
-      session_id: sessionId,
+      user_id: userId,
       version_number: nextVersionNumber,
       playlist_json: playlistJson,
     })
@@ -144,7 +144,7 @@ RULES:
       .eq('id', playlistId),
     supabase.from('chat_messages').insert({
       playlist_id: playlistId,
-      session_id: sessionId,
+      user_id: userId,
       role: 'assistant',
       content: assistantContent,
     }),

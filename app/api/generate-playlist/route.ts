@@ -12,10 +12,10 @@ const supabase = createClient(
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
-  const { mood, sessionId } = await req.json();
+  const { mood, userId } = await req.json();
 
-  if (!mood?.trim() || !sessionId) {
-    return NextResponse.json({ error: 'mood and sessionId are required' }, { status: 400 });
+  if (!mood?.trim() || !userId) {
+    return NextResponse.json({ error: 'mood and userId are required' }, { status: 400 });
   }
 
   // 1. Ask OpenAI for specific Spotify search intents based on the mood
@@ -74,7 +74,7 @@ RULES:
   // 3. Create playlist record in Supabase
   const { data: playlist, error: playlistError } = await supabase
     .from('playlists')
-    .insert({ session_id: sessionId, current_version: 1 })
+    .insert({ user_id: userId, current_version: 1 })
     .select()
     .single();
 
@@ -89,7 +89,7 @@ RULES:
       playlist_id: playlist.id,
       version_number: 1,
       playlist_json: playlistData,
-      session_id: sessionId,
+      user_id: userId,
     })
     .select()
     .single();

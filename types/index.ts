@@ -24,7 +24,7 @@ export interface Playlist {
   id: string;
   created_at: string;
   current_version: number;
-  session_id: string;
+  user_id: string;
 }
 
 export interface ChatMessage {
@@ -33,7 +33,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   created_at?: string;
-  session_id: string;
+  user_id: string;
 }
 
 // AI output format — search intents that map to Spotify queries
@@ -44,7 +44,7 @@ export interface SearchIntent {
 
 export interface SavedPlaylist {
   id: string;
-  session_id: string;
+  user_id: string;
   playlist_version_id: string;
   name: string;
   created_at: string;

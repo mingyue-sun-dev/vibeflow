@@ -6,17 +6,17 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// GET /api/saved-playlists?sessionId=...
+// GET /api/saved-playlists?userId=...
 export async function GET(req: NextRequest) {
-  const sessionId = req.nextUrl.searchParams.get('sessionId');
-  if (!sessionId) {
-    return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (!userId) {
+    return NextResponse.json({ error: 'userId required' }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from('saved_playlists')
     .select('*, playlist_versions(playlist_json)')
-    .eq('session_id', sessionId)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -25,16 +25,16 @@ export async function GET(req: NextRequest) {
 
 // POST /api/saved-playlists
 export async function POST(req: NextRequest) {
-  const { sessionId, playlistVersionId, name } = await req.json();
+  const { userId, playlistVersionId, name } = await req.json();
 
-  if (!sessionId || !playlistVersionId || !name?.trim()) {
+  if (!userId || !playlistVersionId || !name?.trim()) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from('saved_playlists')
     .insert({
-      session_id: sessionId,
+      user_id: userId,
       playlist_version_id: playlistVersionId,
       name: name.trim(),
     })

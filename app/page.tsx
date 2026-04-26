@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { Song, PlaylistVersion, SavedPlaylist } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { signOut } from '@/lib/auth';
+import { AuthModal } from '@/components/AuthModal';
 import { PlaylistPanel } from '@/components/PlaylistPanel';
 import { ChatPanel, LocalMessage } from '@/components/ChatPanel';
 import { ControlPanel } from '@/components/ControlPanel';
 import { SavedPlaylists } from '@/components/SavedPlaylists';
 
 export default function Home() {
-  const [sessionId, setSessionId] = useState('');
   const [mood, setMood] = useState('');
 
   // Playlist state
@@ -30,8 +32,7 @@ export default function Home() {
   const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-
-  // Search history
+  // Search history (UX preference — stays in localStorage)
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -44,41 +45,68 @@ export default function Home() {
   const [isRestoring, setIsRestoring] = useState(true);
   const [error, setError] = useState('');
 
+  // Auth
+  const [user, setUser] = useState<User | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transformAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    let id = localStorage.getItem('vf_session_id');
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem('vf_session_id', id);
-    }
-    setSessionId(id);
-    restoreSession(id);
     try {
       const saved = localStorage.getItem('vf_search_history');
       if (saved) setSearchHistory(JSON.parse(saved));
     } catch { /* ignore */ }
 
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        if (u) {
+          restoreSession(u.id);
+        } else {
+          setIsRestoring(false);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        clearPlaylistState();
+        setIsRestoring(false);
+      }
+    });
+
     return () => {
       if (diffTimerRef.current) clearTimeout(diffTimerRef.current);
+      subscription.unsubscribe();
     };
   }, []);
 
-  // ── Session restore ──────────────────────────────────────────────────────
-  async function restoreSession(sid: string) {
+  // ── Clear playlist state ─────────────────────────────────────────────────
+  function clearPlaylistState() {
+    setSongs([]);
+    setVersions([]);
+    setMessages([]);
+    setPlaylistId(null);
+    setCurrentVersionId(null);
+    setCurrentVersion(0);
+    setCurrentMood('');
+    setNewSongIds(new Set());
+    setSavedPlaylists([]);
+    setError('');
+  }
+
+  // ── Restore data for logged-in user ──────────────────────────────────────
+  async function restoreSession(userId: string) {
     setIsRestoring(true);
 
     const [playlistRes, savedRes] = await Promise.all([
       supabase
         .from('playlists')
         .select('*')
-        .eq('session_id', sid)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      fetch(`/api/saved-playlists?sessionId=${sid}`).then((r) => r.json()),
+      fetch(`/api/saved-playlists?userId=${userId}`).then((r) => r.json()),
     ]);
 
     if (savedRes.saved) setSavedPlaylists(savedRes.saved);
@@ -125,7 +153,6 @@ export default function Home() {
     diffTimerRef.current = setTimeout(() => setNewSongIds(new Set()), 1800);
   }
 
-
   // ── Search history ───────────────────────────────────────────────────────
   function addToHistory(query: string) {
     setSearchHistory((prev) => {
@@ -145,14 +172,14 @@ export default function Home() {
 
   // ── Generate playlist from mood ──────────────────────────────────────────
   async function handleGenerate() {
-    if (!mood.trim() || !sessionId || isGenerating) return;
+    if (!mood.trim() || !user || isGenerating) return;
     setError('');
     setIsGenerating(true);
     try {
       const res = await fetch('/api/generate-playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mood: mood.trim(), sessionId }),
+        body: JSON.stringify({ mood: mood.trim(), userId: user.id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -181,7 +208,7 @@ export default function Home() {
 
   // ── Transform playlist via chat ──────────────────────────────────────────
   async function handleTransform(instruction: string) {
-    if (!playlistId || !sessionId || isTransforming) return;
+    if (!playlistId || !user || isTransforming) return;
 
     const abort = new AbortController();
     transformAbortRef.current = abort;
@@ -195,7 +222,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           playlistId,
-          sessionId,
+          userId: user.id,
           instruction,
           currentPlaylist: { mood: currentMood, songs },
         }),
@@ -217,7 +244,7 @@ export default function Home() {
       setVersions((prev) => [...prev, version]);
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantContent }]);
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return; // silently cancelled
+      if (err instanceof Error && err.name === 'AbortError') return;
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: 'Sorry, something went wrong. Try again.' },
@@ -250,7 +277,7 @@ export default function Home() {
 
   // ── Save current version as bookmark ────────────────────────────────────
   async function handleSave() {
-    if (!currentVersionId || !sessionId || isSaving) return;
+    if (!currentVersionId || !user || isSaving) return;
     setIsSaving(true);
     try {
       const name = currentMood || `Playlist v${currentVersion}`;
@@ -258,7 +285,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId,
+          userId: user.id,
           playlistVersionId: currentVersionId,
           name,
         }),
@@ -292,8 +319,8 @@ export default function Home() {
     await fetch(`/api/saved-playlists/${id}`, { method: 'DELETE' });
   }
 
-  // ── Reset session ────────────────────────────────────────────────────────
-  function handleNewSession() {
+  // ── Clear current playlist ────────────────────────────────────────────────
+  function handleNewPlaylist() {
     setSongs([]);
     setVersions([]);
     setMessages([]);
@@ -307,6 +334,126 @@ export default function Home() {
 
   const hasPlaylist = songs.length > 0;
 
+  // ── Shared mood input UI ──────────────────────────────────────────────────
+  function MoodInput() {
+    return (
+      <div className="flex-1 flex items-center justify-center px-6">
+        <div className="w-full max-w-md space-y-5 text-center">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold">What&apos;s your vibe?</h1>
+            <p className="text-zinc-500 text-sm leading-relaxed">
+              Describe a mood or moment — AI builds a playlist,
+              <br />you shape it through conversation.
+            </p>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              {['Mood', 'Playlist', 'Refine'].map((step, i, arr) => (
+                <span key={step} className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-700">{step}</span>
+                  {i < arr.length - 1 && <span className="text-zinc-800 text-xs">→</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 justify-center">
+            {['late night drive', 'focused deep work', 'rainy day melancholy', 'morning workout'].map(
+              (prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => setMood(prompt)}
+                  className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                >
+                  {prompt}
+                </button>
+              )
+            )}
+          </div>
+
+          <div className="relative">
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={mood}
+                onChange={(e) => setMood(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                onFocus={() => setShowHistory(true)}
+                onBlur={() => setShowHistory(false)}
+                placeholder="e.g. relaxed Sunday morning..."
+                disabled={isGenerating}
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <button
+                onClick={handleGenerate}
+                disabled={!mood.trim() || isGenerating}
+                className="bg-white text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-95 transition-all shrink-0"
+              >
+                {isGenerating ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner />
+                    Curating…
+                  </span>
+                ) : (
+                  'Generate'
+                )}
+              </button>
+            </div>
+
+            {showHistory && searchHistory.length > 0 && !mood.trim() && (
+              <div className="absolute top-full left-0 right-12 mt-1.5 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
+                <p className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {searchHistory.map((query) => (
+                    <div
+                      key={query}
+                      className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors"
+                    >
+                      <button
+                        onMouseDown={(e) => { e.preventDefault(); setMood(query); }}
+                        className="text-xs text-zinc-300 whitespace-nowrap"
+                      >
+                        {query}
+                      </button>
+                      <button
+                        onMouseDown={(e) => { e.preventDefault(); removeFromHistory(query); }}
+                        className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5"
+                        title="Remove"
+                      >
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Login prompt (shown when not authenticated) ───────────────────────────
+  function LoginPrompt() {
+    return (
+      <div className="flex-1 flex items-center justify-center px-6">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-semibold">What&apos;s your vibe?</h1>
+          <p className="text-zinc-500 text-sm">Log in to generate and save playlists.</p>
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="bg-white text-zinc-950 rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-zinc-200 active:scale-95 transition-all"
+          >
+            Log in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -317,14 +464,36 @@ export default function Home() {
             AI Playlist Generator
           </span>
         </div>
-        {hasPlaylist && (
-          <button
-            onClick={handleNewSession}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          >
-            New session
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {hasPlaylist && (
+            <button
+              onClick={handleNewPlaylist}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              New playlist
+            </button>
+          )}
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500 hidden sm:block truncate max-w-[140px]">
+                {user.email}
+              </span>
+              <button
+                onClick={() => signOut()}
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                Log out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Log in
+            </button>
+          )}
+        </div>
       </header>
 
       {/* ── Desktop: 3-panel layout ── */}
@@ -359,7 +528,7 @@ export default function Home() {
           )}
         </aside>
 
-        {/* Center — Mood input or Chat */}
+        {/* Center — Login prompt, Mood input, or Chat */}
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
             <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -367,112 +536,10 @@ export default function Home() {
             </h2>
           </div>
 
-          {!hasPlaylist ? (
-            <div className="flex-1 flex items-center justify-center px-6">
-              <div className="w-full max-w-md space-y-5 text-center">
-                <div className="space-y-2">
-                  <h1 className="text-2xl font-semibold">What&apos;s your vibe?</h1>
-                  <p className="text-zinc-500 text-sm leading-relaxed">
-                    Describe a mood or moment — AI builds a playlist,
-                    <br />you shape it through conversation.
-                  </p>
-                  <div className="flex items-center justify-center gap-2 pt-1">
-                    {['Mood', 'Playlist', 'Refine'].map((step, i, arr) => (
-                      <span key={step} className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-700">{step}</span>
-                        {i < arr.length - 1 && <span className="text-zinc-800 text-xs">→</span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Quick suggestion chips */}
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {['late night drive', 'focused deep work', 'rainy day melancholy', 'morning workout'].map(
-                    (prompt) => (
-                      <button
-                        key={prompt}
-                        onClick={() => setMood(prompt)}
-                        className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
-                      >
-                        {prompt}
-                      </button>
-                    )
-                  )}
-                </div>
-
-                {/* Input + history dropdown */}
-                <div className="relative">
-                  <div className="flex gap-2">
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={mood}
-                      onChange={(e) => setMood(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                      onFocus={() => setShowHistory(true)}
-                      onBlur={() => setShowHistory(false)}
-                      placeholder="e.g. relaxed Sunday morning..."
-                      disabled={isGenerating}
-                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <button
-                      onClick={handleGenerate}
-                      disabled={!mood.trim() || isGenerating}
-                      className="bg-white text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-95 transition-all shrink-0"
-                    >
-                      {isGenerating ? (
-                        <span className="flex items-center gap-2">
-                          <Spinner />
-                          Curating…
-                        </span>
-                      ) : (
-                        'Generate'
-                      )}
-                    </button>
-                  </div>
-
-                  {/* History dropdown */}
-                  {showHistory && searchHistory.length > 0 && !mood.trim() && (
-                    <div className="absolute top-full left-0 right-12 mt-1.5 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
-                      <p className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {searchHistory.map((query) => (
-                          <div
-                            key={query}
-                            className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors"
-                          >
-                            <button
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setMood(query);
-                              }}
-                              className="text-xs text-zinc-300 whitespace-nowrap"
-                            >
-                              {query}
-                            </button>
-                            <button
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                removeFromHistory(query);
-                              }}
-                              className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5"
-                              title="Remove"
-                            >
-                              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {error && <p className="text-red-400 text-xs">{error}</p>}
-              </div>
-            </div>
+          {isRestoring ? null : !user ? (
+            <LoginPrompt />
+          ) : !hasPlaylist ? (
+            <MoodInput />
           ) : (
             <ChatPanel
               messages={messages}
@@ -508,7 +575,6 @@ export default function Home() {
       {/* ── Mobile: single panel + bottom tab bar ── */}
       <div className="flex md:hidden flex-col flex-1 overflow-hidden">
 
-        {/* Active panel */}
         <div className="flex-1 overflow-hidden flex flex-col">
 
           {activeTab === 'playlist' && (
@@ -544,58 +610,11 @@ export default function Home() {
                   {hasPlaylist ? 'Refine' : 'Generate'}
                 </h2>
               </div>
-              {!hasPlaylist ? (
-                <div className="flex-1 flex items-center justify-center px-6 overflow-y-auto">
-                  <div className="w-full max-w-md space-y-5 text-center py-8">
-                    <div className="space-y-2">
-                      <h1 className="text-2xl font-semibold">What&apos;s your vibe?</h1>
-                      <p className="text-zinc-500 text-sm leading-relaxed">
-                        Describe a mood or moment — AI builds a playlist,<br />you shape it through conversation.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {['late night drive', 'focused deep work', 'rainy day melancholy', 'morning workout'].map((prompt) => (
-                        <button key={prompt} onClick={() => setMood(prompt)}
-                          className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors">
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="relative">
-                      <div className="flex gap-2">
-                        <input
-                          ref={inputRef} type="text" value={mood}
-                          onChange={(e) => setMood(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                          onFocus={() => setShowHistory(true)}
-                          onBlur={() => setShowHistory(false)}
-                          placeholder="e.g. relaxed Sunday morning..."
-                          disabled={isGenerating}
-                          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <button onClick={handleGenerate} disabled={!mood.trim() || isGenerating}
-                          className="bg-white text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-95 transition-all shrink-0">
-                          {isGenerating ? <span className="flex items-center gap-2"><Spinner />Curating…</span> : 'Generate'}
-                        </button>
-                      </div>
-                      {showHistory && searchHistory.length > 0 && !mood.trim() && (
-                        <div className="absolute top-full left-0 right-12 mt-1.5 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
-                          <p className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {searchHistory.map((query) => (
-                              <div key={query} className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors">
-                                <button onMouseDown={(e) => { e.preventDefault(); setMood(query); }} className="text-xs text-zinc-300 whitespace-nowrap">{query}</button>
-                                <button onMouseDown={(e) => { e.preventDefault(); removeFromHistory(query); }} className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5" title="Remove">
-                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {error && <p className="text-red-400 text-xs">{error}</p>}
-                  </div>
+              {isRestoring ? null : !user ? (
+                <LoginPrompt />
+              ) : !hasPlaylist ? (
+                <div className="overflow-y-auto">
+                  <MoodInput />
                 </div>
               ) : (
                 <ChatPanel
@@ -663,6 +682,10 @@ export default function Home() {
           ))}
         </nav>
       </div>
+
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} />
+      )}
     </div>
   );
 }
