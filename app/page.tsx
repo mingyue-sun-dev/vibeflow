@@ -1,65 +1,695 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { Song, PlaylistVersion, SavedPlaylist } from '@/types';
+import { supabase } from '@/lib/supabase';
+import { PlaylistPanel } from '@/components/PlaylistPanel';
+import { ChatPanel, LocalMessage } from '@/components/ChatPanel';
+import { ControlPanel } from '@/components/ControlPanel';
+import { SavedPlaylists } from '@/components/SavedPlaylists';
 
 export default function Home() {
+  const [sessionId, setSessionId] = useState('');
+  const [mood, setMood] = useState('');
+
+  // Playlist state
+  const [playlistId, setPlaylistId] = useState<string | null>(null);
+  const [currentVersionId, setCurrentVersionId] = useState<string | null>(null);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [currentMood, setCurrentMood] = useState('');
+  const [currentVersion, setCurrentVersion] = useState(0);
+  const [versions, setVersions] = useState<PlaylistVersion[]>([]);
+
+  // Diff highlight
+  const [newSongIds, setNewSongIds] = useState<Set<string>>(new Set());
+
+  // Chat
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
+
+  // Saved playlists (bookmarks)
+  const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+
+  // Search history
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Mobile tab
+  const [activeTab, setActiveTab] = useState<'playlist' | 'chat' | 'controls'>('chat');
+
+  // Loading
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isTransforming, setIsTransforming] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
+  const [error, setError] = useState('');
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transformAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let id = localStorage.getItem('vf_session_id');
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem('vf_session_id', id);
+    }
+    setSessionId(id);
+    restoreSession(id);
+    try {
+      const saved = localStorage.getItem('vf_search_history');
+      if (saved) setSearchHistory(JSON.parse(saved));
+    } catch { /* ignore */ }
+
+    return () => {
+      if (diffTimerRef.current) clearTimeout(diffTimerRef.current);
+    };
+  }, []);
+
+  // ── Session restore ──────────────────────────────────────────────────────
+  async function restoreSession(sid: string) {
+    setIsRestoring(true);
+
+    const [playlistRes, savedRes] = await Promise.all([
+      supabase
+        .from('playlists')
+        .select('*')
+        .eq('session_id', sid)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      fetch(`/api/saved-playlists?sessionId=${sid}`).then((r) => r.json()),
+    ]);
+
+    if (savedRes.saved) setSavedPlaylists(savedRes.saved);
+
+    const playlist = playlistRes.data;
+    if (!playlist) { setIsRestoring(false); return; }
+
+    const { data: versionRows } = await supabase
+      .from('playlist_versions')
+      .select('*')
+      .eq('playlist_id', playlist.id)
+      .order('version_number', { ascending: true });
+
+    if (!versionRows?.length) { setIsRestoring(false); return; }
+
+    const active =
+      versionRows.find((v) => v.version_number === playlist.current_version) ??
+      versionRows[versionRows.length - 1];
+
+    setPlaylistId(playlist.id);
+    setCurrentVersionId(active.id);
+    setCurrentVersion(active.version_number);
+    setSongs(active.playlist_json.songs);
+    setCurrentMood(active.playlist_json.mood);
+    setVersions(versionRows as PlaylistVersion[]);
+
+    const { data: chatRows } = await supabase
+      .from('chat_messages')
+      .select('role, content')
+      .eq('playlist_id', playlist.id)
+      .order('created_at', { ascending: true });
+
+    if (chatRows?.length) setMessages(chatRows as LocalMessage[]);
+    setIsRestoring(false);
+  }
+
+  // ── Diff highlight ───────────────────────────────────────────────────────
+  function flashNewSongs(oldSongs: Song[], incomingSongs: Song[]) {
+    const oldIds = new Set(oldSongs.map((s) => s.id));
+    const ids = new Set(incomingSongs.filter((s) => !oldIds.has(s.id)).map((s) => s.id));
+    if (ids.size === 0) return;
+    setNewSongIds(ids);
+    if (diffTimerRef.current) clearTimeout(diffTimerRef.current);
+    diffTimerRef.current = setTimeout(() => setNewSongIds(new Set()), 1800);
+  }
+
+
+  // ── Search history ───────────────────────────────────────────────────────
+  function addToHistory(query: string) {
+    setSearchHistory((prev) => {
+      const next = [query, ...prev.filter((q) => q.toLowerCase() !== query.toLowerCase())].slice(0, 8);
+      localStorage.setItem('vf_search_history', JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function removeFromHistory(query: string) {
+    setSearchHistory((prev) => {
+      const next = prev.filter((q) => q !== query);
+      localStorage.setItem('vf_search_history', JSON.stringify(next));
+      return next;
+    });
+  }
+
+  // ── Generate playlist from mood ──────────────────────────────────────────
+  async function handleGenerate() {
+    if (!mood.trim() || !sessionId || isGenerating) return;
+    setError('');
+    setIsGenerating(true);
+    try {
+      const res = await fetch('/api/generate-playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mood: mood.trim(), sessionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const { playlist, version } = data as {
+        playlist: { id: string };
+        version: PlaylistVersion;
+      };
+
+      addToHistory(mood.trim());
+      setActiveTab('playlist');
+      setPlaylistId(playlist.id);
+      setCurrentVersionId(version.id);
+      setCurrentVersion(version.version_number);
+      setSongs(version.playlist_json.songs);
+      setCurrentMood(version.playlist_json.mood);
+      setVersions([version]);
+      setMessages([]);
+      setMood('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  // ── Transform playlist via chat ──────────────────────────────────────────
+  async function handleTransform(instruction: string) {
+    if (!playlistId || !sessionId || isTransforming) return;
+
+    const abort = new AbortController();
+    transformAbortRef.current = abort;
+
+    setMessages((prev) => [...prev, { role: 'user', content: instruction }]);
+    setIsTransforming(true);
+
+    try {
+      const res = await fetch('/api/transform-playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playlistId,
+          sessionId,
+          instruction,
+          currentPlaylist: { mood: currentMood, songs },
+        }),
+        signal: abort.signal,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const { version, assistantContent } = data as {
+        version: PlaylistVersion;
+        assistantContent: string;
+      };
+
+      flashNewSongs(songs, version.playlist_json.songs);
+      setCurrentVersionId(version.id);
+      setCurrentVersion(version.version_number);
+      setSongs(version.playlist_json.songs);
+      setCurrentMood(version.playlist_json.mood);
+      setVersions((prev) => [...prev, version]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: assistantContent }]);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return; // silently cancelled
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Sorry, something went wrong. Try again.' },
+      ]);
+    } finally {
+      transformAbortRef.current = null;
+      setIsTransforming(false);
+    }
+  }
+
+  function handleCancelTransform() {
+    transformAbortRef.current?.abort();
+  }
+
+  // ── Revert to a previous version ─────────────────────────────────────────
+  function handleRevert(version: PlaylistVersion) {
+    flashNewSongs(songs, version.playlist_json.songs);
+    setCurrentVersionId(version.id);
+    setCurrentVersion(version.version_number);
+    setSongs(version.playlist_json.songs);
+    setCurrentMood(version.playlist_json.mood);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: `Reverted to v${version.version_number} — ${version.playlist_json.songs.length} tracks.`,
+      },
+    ]);
+  }
+
+  // ── Save current version as bookmark ────────────────────────────────────
+  async function handleSave() {
+    if (!currentVersionId || !sessionId || isSaving) return;
+    setIsSaving(true);
+    try {
+      const name = currentMood || `Playlist v${currentVersion}`;
+      const res = await fetch('/api/saved-playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          playlistVersionId: currentVersionId,
+          name,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSavedPlaylists((prev) => [data.saved, ...prev]);
+    } catch (err) {
+      console.error('Save failed:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // ── Restore a saved bookmark ─────────────────────────────────────────────
+  function handleRestoreSaved(saved: SavedPlaylist) {
+    const pj = saved.playlist_versions?.playlist_json;
+    if (!pj) return;
+    flashNewSongs(songs, pj.songs);
+    setSongs(pj.songs);
+    setCurrentMood(pj.mood);
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: `Loaded saved playlist: "${saved.name}"` },
+    ]);
+  }
+
+  // ── Delete a saved bookmark ──────────────────────────────────────────────
+  async function handleDeleteSaved(id: string) {
+    setSavedPlaylists((prev) => prev.filter((s) => s.id !== id));
+    await fetch(`/api/saved-playlists/${id}`, { method: 'DELETE' });
+  }
+
+  // ── Reset session ────────────────────────────────────────────────────────
+  function handleNewSession() {
+    setSongs([]);
+    setVersions([]);
+    setMessages([]);
+    setPlaylistId(null);
+    setCurrentVersionId(null);
+    setCurrentVersion(0);
+    setCurrentMood('');
+    setNewSongIds(new Set());
+    setError('');
+  }
+
+  const hasPlaylist = songs.length > 0;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-semibold tracking-tight">VibeFlow</span>
+          <span className="text-xs text-zinc-500 font-mono hidden sm:block">
+            AI Playlist Generator
+          </span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        {hasPlaylist && (
+          <button
+            onClick={handleNewSession}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            New session
+          </button>
+        )}
+      </header>
+
+      {/* ── Desktop: 3-panel layout ── */}
+      <div className="hidden md:flex flex-1 overflow-hidden">
+
+        {/* Left — Playlist */}
+        <aside className="w-72 shrink-0 border-r border-zinc-800 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              Playlist
+              {hasPlaylist && (
+                <span className="ml-2 text-zinc-600 normal-case font-normal">
+                  {songs.length} tracks
+                </span>
+              )}
+            </h2>
+          </div>
+          {isRestoring ? (
+            <PlaylistSkeleton />
+          ) : (
+            <div className="animate-fade-in flex flex-col h-full overflow-hidden">
+              <PlaylistPanel
+                songs={songs}
+                mood={currentMood}
+                currentVersion={currentVersion}
+                versions={versions}
+                newSongIds={newSongIds}
+                isTransforming={isTransforming}
+                onRevert={handleRevert}
+              />
+            </div>
+          )}
+        </aside>
+
+        {/* Center — Mood input or Chat */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              {hasPlaylist ? 'Refine' : 'Generate'}
+            </h2>
+          </div>
+
+          {!hasPlaylist ? (
+            <div className="flex-1 flex items-center justify-center px-6">
+              <div className="w-full max-w-md space-y-5 text-center">
+                <div className="space-y-2">
+                  <h1 className="text-2xl font-semibold">What&apos;s your vibe?</h1>
+                  <p className="text-zinc-500 text-sm leading-relaxed">
+                    Describe a mood or moment — AI builds a playlist,
+                    <br />you shape it through conversation.
+                  </p>
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    {['Mood', 'Playlist', 'Refine'].map((step, i, arr) => (
+                      <span key={step} className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-700">{step}</span>
+                        {i < arr.length - 1 && <span className="text-zinc-800 text-xs">→</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick suggestion chips */}
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {['late night drive', 'focused deep work', 'rainy day melancholy', 'morning workout'].map(
+                    (prompt) => (
+                      <button
+                        key={prompt}
+                        onClick={() => setMood(prompt)}
+                        className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                      >
+                        {prompt}
+                      </button>
+                    )
+                  )}
+                </div>
+
+                {/* Input + history dropdown */}
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={mood}
+                      onChange={(e) => setMood(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                      onFocus={() => setShowHistory(true)}
+                      onBlur={() => setShowHistory(false)}
+                      placeholder="e.g. relaxed Sunday morning..."
+                      disabled={isGenerating}
+                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <button
+                      onClick={handleGenerate}
+                      disabled={!mood.trim() || isGenerating}
+                      className="bg-white text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-95 transition-all shrink-0"
+                    >
+                      {isGenerating ? (
+                        <span className="flex items-center gap-2">
+                          <Spinner />
+                          Curating…
+                        </span>
+                      ) : (
+                        'Generate'
+                      )}
+                    </button>
+                  </div>
+
+                  {/* History dropdown */}
+                  {showHistory && searchHistory.length > 0 && !mood.trim() && (
+                    <div className="absolute top-full left-0 right-12 mt-1.5 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
+                      <p className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {searchHistory.map((query) => (
+                          <div
+                            key={query}
+                            className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors"
+                          >
+                            <button
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setMood(query);
+                              }}
+                              className="text-xs text-zinc-300 whitespace-nowrap"
+                            >
+                              {query}
+                            </button>
+                            <button
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                removeFromHistory(query);
+                              }}
+                              className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5"
+                              title="Remove"
+                            >
+                              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {error && <p className="text-red-400 text-xs">{error}</p>}
+              </div>
+            </div>
+          ) : (
+            <ChatPanel
+              messages={messages}
+              onSend={handleTransform}
+              onCancel={handleCancelTransform}
+              isTransforming={isTransforming}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
+        </main>
+
+        {/* Right — Controls + Saved */}
+        <aside className="w-56 shrink-0 border-l border-zinc-800 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Controls</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            <ControlPanel
+              onQuickAction={handleTransform}
+              disabled={!hasPlaylist || isTransforming}
+            />
+            <SavedPlaylists
+              saved={savedPlaylists}
+              onRestore={handleRestoreSaved}
+              onDelete={handleDeleteSaved}
+              onSave={handleSave}
+              canSave={hasPlaylist}
+              isSaving={isSaving}
+            />
+          </div>
+        </aside>
+      </div>
+
+      {/* ── Mobile: single panel + bottom tab bar ── */}
+      <div className="flex md:hidden flex-col flex-1 overflow-hidden">
+
+        {/* Active panel */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+
+          {activeTab === 'playlist' && (
+            <>
+              <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+                <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  Playlist
+                  {hasPlaylist && (
+                    <span className="ml-2 text-zinc-600 normal-case font-normal">{songs.length} tracks</span>
+                  )}
+                </h2>
+              </div>
+              {isRestoring ? <PlaylistSkeleton /> : (
+                <div className="animate-fade-in flex flex-col flex-1 overflow-hidden">
+                  <PlaylistPanel
+                    songs={songs}
+                    mood={currentMood}
+                    currentVersion={currentVersion}
+                    versions={versions}
+                    newSongIds={newSongIds}
+                    isTransforming={isTransforming}
+                    onRevert={handleRevert}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'chat' && (
+            <>
+              <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+                <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  {hasPlaylist ? 'Refine' : 'Generate'}
+                </h2>
+              </div>
+              {!hasPlaylist ? (
+                <div className="flex-1 flex items-center justify-center px-6 overflow-y-auto">
+                  <div className="w-full max-w-md space-y-5 text-center py-8">
+                    <div className="space-y-2">
+                      <h1 className="text-2xl font-semibold">What&apos;s your vibe?</h1>
+                      <p className="text-zinc-500 text-sm leading-relaxed">
+                        Describe a mood or moment — AI builds a playlist,<br />you shape it through conversation.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {['late night drive', 'focused deep work', 'rainy day melancholy', 'morning workout'].map((prompt) => (
+                        <button key={prompt} onClick={() => setMood(prompt)}
+                          className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors">
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <div className="flex gap-2">
+                        <input
+                          ref={inputRef} type="text" value={mood}
+                          onChange={(e) => setMood(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                          onFocus={() => setShowHistory(true)}
+                          onBlur={() => setShowHistory(false)}
+                          placeholder="e.g. relaxed Sunday morning..."
+                          disabled={isGenerating}
+                          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <button onClick={handleGenerate} disabled={!mood.trim() || isGenerating}
+                          className="bg-white text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-95 transition-all shrink-0">
+                          {isGenerating ? <span className="flex items-center gap-2"><Spinner />Curating…</span> : 'Generate'}
+                        </button>
+                      </div>
+                      {showHistory && searchHistory.length > 0 && !mood.trim() && (
+                        <div className="absolute top-full left-0 right-12 mt-1.5 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
+                          <p className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {searchHistory.map((query) => (
+                              <div key={query} className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors">
+                                <button onMouseDown={(e) => { e.preventDefault(); setMood(query); }} className="text-xs text-zinc-300 whitespace-nowrap">{query}</button>
+                                <button onMouseDown={(e) => { e.preventDefault(); removeFromHistory(query); }} className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5" title="Remove">
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {error && <p className="text-red-400 text-xs">{error}</p>}
+                  </div>
+                </div>
+              ) : (
+                <ChatPanel
+                  messages={messages}
+                  onSend={handleTransform}
+                  onCancel={handleCancelTransform}
+                  isTransforming={isTransforming}
+                />
+              )}
+            </>
+          )}
+
+          {activeTab === 'controls' && (
+            <>
+              <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+                <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Controls</h2>
+              </div>
+              <div className="flex-1 overflow-y-auto flex flex-col">
+                <ControlPanel
+                  onQuickAction={(instruction) => { setActiveTab('chat'); handleTransform(instruction); }}
+                  disabled={!hasPlaylist || isTransforming}
+                />
+                <SavedPlaylists
+                  saved={savedPlaylists}
+                  onRestore={handleRestoreSaved}
+                  onDelete={handleDeleteSaved}
+                  onSave={handleSave}
+                  canSave={hasPlaylist}
+                  isSaving={isSaving}
+                />
+              </div>
+            </>
+          )}
         </div>
-      </main>
+
+        {/* Bottom tab bar */}
+        <nav className="border-t border-zinc-800 shrink-0 flex bg-zinc-950">
+          {([
+            { tab: 'playlist', label: 'Playlist', icon: (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+              </svg>
+            )},
+            { tab: 'chat', label: hasPlaylist ? 'Refine' : 'Generate', icon: (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            )},
+            { tab: 'controls', label: 'Controls', icon: (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+            )},
+          ] as const).map(({ tab, label, icon }) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors ${
+                activeTab === tab ? 'text-white' : 'text-zinc-600 hover:text-zinc-400'
+              }`}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
     </div>
+  );
+}
+
+function PlaylistSkeleton() {
+  return (
+    <div className="flex-1 px-4 py-3 space-y-3">
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 animate-pulse">
+          <div className="w-4 h-3 bg-zinc-800 rounded shrink-0" />
+          <div className="w-8 h-8 bg-zinc-800 rounded shrink-0" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 bg-zinc-800 rounded w-3/4" />
+            <div className="h-2.5 bg-zinc-800/60 rounded w-1/2" />
+          </div>
+          <div className="w-8 h-2.5 bg-zinc-800 rounded shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
   );
 }
