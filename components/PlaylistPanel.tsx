@@ -1,5 +1,6 @@
 'use client';
 
+import { AnimatePresence } from 'framer-motion';
 import { Song, PlaylistVersion } from '@/types';
 import { PlaylistItem } from './PlaylistItem';
 import { VersionHistory } from './VersionHistory';
@@ -53,16 +54,18 @@ export function PlaylistPanel({
           isTransforming ? 'opacity-40 pointer-events-none' : 'opacity-100'
         }`}
       >
-        {songs.map((song, i) => (
-          <PlaylistItem
-            key={song.id}
-            song={song}
-            index={i}
-            isNew={newSongIds.has(song.id)}
-            isActive={activeSongId === song.id}
-            onSelect={onSongSelect}
-          />
-        ))}
+        <AnimatePresence mode="popLayout">
+          {songs.map((song, i) => (
+            <PlaylistItem
+              key={song.id}
+              song={song}
+              index={i}
+              isNew={newSongIds.has(song.id)}
+              isActive={activeSongId === song.id}
+              onSelect={onSongSelect}
+            />
+          ))}
+        </AnimatePresence>
       </div>
 
       {/* Version history */}

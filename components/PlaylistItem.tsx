@@ -1,5 +1,6 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import { Song } from '@/types';
 
 interface PlaylistItemProps {
@@ -27,7 +28,12 @@ function SpotifyIcon() {
 
 export function PlaylistItem({ song, index, isNew = false, isActive = false, onSelect }: PlaylistItemProps) {
   return (
-    <div
+    <motion.div
+      layout
+      initial={isNew ? { opacity: 0, x: -12, y: 0 } : { opacity: 0, x: 0, y: 10 }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
+      exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
+      transition={{ duration: 0.25, delay: isNew ? 0 : index * 0.035, ease: 'easeOut' }}
       onClick={() => onSelect?.(song.id)}
       className={`group flex items-center gap-3 px-4 py-2 transition-colors cursor-pointer ${
         isActive ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
@@ -80,6 +86,6 @@ export function PlaylistItem({ song, index, isNew = false, isActive = false, onS
           </a>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
