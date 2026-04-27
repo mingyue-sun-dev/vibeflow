@@ -28,7 +28,8 @@ Every change creates a new version. Don't like where it went? Revert. Save the o
 - **OpenAI** — mood → search intent translation
 - **Spotify Web API** — track search, artist top tracks
 - **Supabase** — auth (email/password), playlist versions, chat history, saved bookmarks
-- **Tailwind CSS** — dark zinc theme, fully responsive
+- **Tailwind CSS** — dark/light theme, fully responsive
+- **Framer Motion** — animated track list transitions
 
 ---
 
@@ -103,6 +104,13 @@ create table saved_playlists (
 );
 ```
 
+for shareable playlist URLs, also add an RLS policy allowing public reads on `playlist_versions`:
+
+```sql
+create policy "public_read_playlist_versions"
+  on playlist_versions for select using (true);
+```
+
 **5. run it**
 
 ```bash
@@ -117,12 +125,15 @@ open [localhost:3000](http://localhost:3000).
 
 - **mood-to-playlist** — describe anything, get a curated tracklist
 - **chat refinement** — conversational edits that actually understand intent
-- **version history** — every change is saved, revert anytime
+- **version history** — every change is saved; history panel shows track diffs (+added/−removed) and lets you revert to any version
 - **saved bookmarks** — pin the versions worth keeping
+- **shareable URLs** — every playlist version has a public link with a dynamically rendered OG image (album art grid + mood text) for rich link previews
 - **in-app player** — click any track to open the Spotify embed player inline; persists while you chat or switch tabs
 - **open in Spotify** — one click from any track to open it in Spotify
 - **cross-device persistence** — log in from anywhere, your playlists follow
 - **search history** — recent moods in a dropdown, one click to reuse
+- **keyboard navigation** — arrow keys to move through the playlist, Enter/Space to play, Esc to cancel a running transform
+- **dark/light theme** — toggle in the header, preference saved to localStorage
 - **responsive** — full three-panel desktop layout, tab-based mobile layout
 - **duplicate filtering** — fingerprint dedup catches radio edits, remasters, live versions
 
@@ -136,14 +147,16 @@ open [localhost:3000](http://localhost:3000).
     /generate-playlist   — mood → OpenAI → Spotify → save to Supabase
     /transform-playlist  — chat instruction → OpenAI → Spotify → new version
     /saved-playlists     — bookmark CRUD
+  /playlist/[versionId]  — public shareable playlist page (SSR, OG metadata + rendered image)
 /components
   PlaylistPanel          — song list + version history
   ChatPanel              — message thread + input
   ControlPanel           — quick action buttons
-  PlaylistItem           — single track row with preview + Spotify link
+  PlaylistItem           — single track row with embed toggle + Spotify link
   SavedPlaylists         — bookmark list + save button
   VersionHistory         — version timeline
   AuthModal              — email/password login + signup modal
+  ThemeToggle            — dark/light mode switch
 /lib
   auth.ts                — signUp, signIn, signOut, getCurrentUser helpers
   spotify.ts             — token auth, search, artist lookup, dedup logic

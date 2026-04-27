@@ -2,90 +2,74 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-@AGENTS.md
-
 ## Commands
 
 ```bash
-npm run dev      # start dev server at localhost:3000
-npm run build    # production build (also type-checks)
-npm run lint     # ESLint
+npm run dev      # start dev server on localhost:3000
+npm run build    # production build
+npm run lint     # ESLint check
 ```
 
-No test suite exists.
+No test suite is configured.
 
-## Environment Variables
+## Environment variables
 
-Copy `.env.example` → `.env.local` and fill in:
+Copy `.env.example` to `.env.local` and fill in:
 
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase project
-- `OPENAI_API_KEY` — used server-side only in API routes
-- `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` — Client Credentials flow (no user login)
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+OPENAI_API_KEY=
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+```
+
+Spotify credentials use the **Client Credentials** flow (server-to-server, no user OAuth). The account that owns the Spotify app needs **Spotify Premium** for Web API search to work.
 
 ## Architecture
 
-**Stack:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Supabase (Postgres + Auth), OpenAI `gpt-4o-mini`, Spotify Web API.
+VibeFlow is a mood-driven AI playlist generator. The user describes a vibe in plain text; OpenAI translates that into Spotify search intents; Spotify returns real tracks; the result is saved as a versioned snapshot in Supabase.
 
-**Auth model:** Supabase email/password auth. Users must be logged in to use the app. All data is scoped to `user_id` (the Supabase `auth.users.id`). Auth state is tracked via `supabase.auth.onAuthStateChange` in the root `useEffect` — it fires `INITIAL_SESSION` on load, `SIGNED_IN` on login, and `SIGNED_OUT` on logout. No localStorage session identity.
+**Request flow for playlist generation:**
+1. `POST /api/generate-playlist` — receives `{ mood, userId }`
+2. Calls `gpt-4o-mini` with structured JSON output to get 10–12 `SearchIntent[]` objects (a mix of specific `artist:"X" track:"Y"` queries and free-text style queries)
+3. Calls `lib/spotify.ts → searchMany()` which fans out to Spotify in parallel, deduplicates by ID and by a normalized fingerprint (strips remaster/live/radio-edit suffixes), and caps at 14 tracks with a 2-per-artist limit
+4. Inserts a `playlists` row and a `playlist_versions` row (storing the full `{ mood, songs[] }` snapshot as JSONB) in Supabase
+5. Returns `{ playlist, version }` to the client
 
-### Data flow
+**Transform flow** (`POST /api/transform-playlist`) is similar: OpenAI receives the current song list and the user instruction and returns `{ keep_ids, new_searches, mood, note }`. Kept songs are merged with fresh Spotify results, deduplicated, capped at 14, and saved as a new version. The client never mutates versions — every change creates a new row.
 
-```
-User logs in → onAuthStateChange(SIGNED_IN) → restoreSession(user.id)
-  → fetch most recent playlist + versions + chat history + saved bookmarks
-  → hydrate all page state
+**Revert** is purely client-side: `handleRevert` in `app/page.tsx` just swaps the active version's `playlist_json` into state; no API call needed.
 
-User types mood
-  → POST /api/generate-playlist  { mood, userId }
-      → OpenAI: mood → 10–12 Spotify search intents (JSON); mood field is a 3-5 word vibe label
-      → lib/spotify.ts searchMany(): parallel Spotify searches (6 results/query) + artist top-track lookups
-      → dedup by ID and normalized fingerprint (strips remasters/live/radio edits)
-      → if result < 10 tracks: fallback OpenAI call for broader style queries, results merged + deduped
-      → cap at 14 tracks, save to Supabase (playlists + playlist_versions)
-  → UI: songs + version appear in PlaylistPanel
-
-User sends chat instruction
-  → POST /api/transform-playlist  { playlistId, userId, instruction, currentPlaylist }
-      → OpenAI: keep_ids + new_searches (JSON)
-      → searchMany() for new tracks, dedup against kept songs
-      → save new playlist_version + chat_messages rows
-  → UI: diff-highlighted new songs flash for 1.8s, new version appended
+**Shareable URLs** — `/playlist/[versionId]` is a public server-rendered page. It requires a Supabase RLS policy allowing public `SELECT` on `playlist_versions`:
+```sql
+CREATE POLICY "public_read_playlist_versions" ON playlist_versions FOR SELECT USING (true);
 ```
 
-### Supabase schema (4 tables)
+## State management
 
-All tables have `user_id uuid references auth.users(id) on delete cascade`.
+All state lives in `app/page.tsx` via `useState`. Supabase is the source of truth; the client re-fetches on auth state change and passes data down as props. There is no global state store (no Zustand, no Context). The Spotify embed player `activeSongId` is lifted to `page.tsx` so it persists across mobile tab switches.
 
-- `playlists` — one row per user's active playlist; tracks `current_version`
-- `playlist_versions` — immutable snapshots; `playlist_json: {mood, songs[]}` (JSONB)
-- `chat_messages` — full conversation history per playlist
-- `saved_playlists` — bookmarks linking `user_id` → `playlist_version_id`
+Search history is the only piece of state stored in `localStorage` (key: `vf_search_history`).
 
-Manage users via Supabase dashboard → Authentication → Users, or `select id, email, created_at from auth.users` in the SQL editor.
+## Key data types (`types/index.ts`)
 
-### State management
+- `Song` — Spotify track ID + title/artist/genre/album_image/duration_ms/external_url
+- `PlaylistVersion` — wraps `playlist_json: { mood: string; songs: Song[] }` with version_number
+- `SearchIntent` — `{ query, genre }` — the AI's output before hitting Spotify
+- `SavedPlaylist` — bookmark joining a user to a specific `playlist_versions` row
 
-All state lives in `app/page.tsx` via `useState`. No global store. On `SIGNED_OUT`, `clearPlaylistState()` resets all playlist/chat/version state. On `SIGNED_IN`/`INITIAL_SESSION`, `restoreSession(userId)` rehydrates from Supabase.
+## Supabase schema
 
-`activeSongId: string | null` tracks the currently open Spotify embed player. It lives in `page.tsx` (not `PlaylistPanel`) so the iframe persists when the user switches mobile tabs — the embed is rendered outside the tab-conditional blocks, above the tab bar on mobile and at the bottom of the left aside on desktop. Reset explicitly in `handleGenerate`, `handleNewPlaylist`, and `clearPlaylistState`; intentionally NOT reset on chat transforms or version reverts so playback continues while the user refines. Do not use a `useEffect([songs])` to reset it — Supabase re-fires auth events on tab focus which calls `restoreSession` → `setSongs`, and that would kill the player.
+```sql
+playlists           — user_id, current_version (int)
+playlist_versions   — playlist_id, version_number, playlist_json (jsonb), user_id
+chat_messages       — playlist_id, user_id, role, content
+saved_playlists     — user_id, playlist_version_id, name
+```
 
-### Key files
+Auth uses Supabase Email/Password. API routes create their own `createClient()` directly with env vars; the browser client is the singleton from `lib/supabase.ts`.
 
-- `app/page.tsx` — all page state and event handlers; renders 3-panel desktop / tab-based mobile layout; gates UI on auth state
-- `app/api/generate-playlist/route.ts` — mood → OpenAI → Spotify → Supabase (creates playlist + v1)
-- `app/api/transform-playlist/route.ts` — chat instruction → OpenAI → Spotify → Supabase (new version)
-- `app/api/saved-playlists/route.ts` — GET/POST bookmarks
-- `app/api/saved-playlists/[id]/route.ts` — DELETE bookmark
-- `lib/auth.ts` — thin wrappers: `signUp`, `signIn`, `signOut`, `getCurrentUser`
-- `lib/supabase.ts` — single browser Supabase client (shared by page + auth helpers)
-- `lib/spotify.ts` — Spotify Client Credentials token cache, `searchTracks`, `searchMany`, `trackFingerprint`
-- `components/AuthModal.tsx` — email/password modal with login/signup tabs
-- `types/index.ts` — `Song`, `Playlist`, `PlaylistVersion`, `ChatMessage`, `SearchIntent`, `SavedPlaylist`
+## Next.js version note
 
-### API route conventions
-
-API routes instantiate their own `supabase` and `openai` clients at module level (not shared with `lib/supabase.ts`). They receive `userId` in the request body and store it in the `user_id` column. Dynamic route params are `Promise`-typed in Next.js 16 — always `await params` before destructuring.
-
-### Spotify dedup logic
-
-`trackFingerprint` in `lib/spotify.ts` normalizes title + primary artist to catch radio edits, remasters, and live versions. `searchMany` enforces a `MAX_PER_ARTIST = 2` cap (lifted to ∞ for a dominant artist) — the cap key uses the primary artist only (first comma-split), consistent with `trackFingerprint`. A dominant artist is one appearing in ≥3 queries or >40% of the query set.
+This repo runs **Next.js 16** (App Router). APIs and conventions may differ from your training data — read `node_modules/next/dist/docs/` before writing any Next.js-specific code and heed deprecation notices.
