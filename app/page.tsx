@@ -59,6 +59,15 @@ export default function Home() {
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transformAbortRef = useRef<AbortController | null>(null);
 
+  // Global Esc → cancel in-progress transform
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && isTransforming) handleCancelTransform();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTransforming]);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem('vf_search_history');
@@ -426,8 +435,8 @@ export default function Home() {
                       </button>
                       <button
                         onMouseDown={(e) => { e.preventDefault(); removeFromHistory(query); }}
+                        aria-label={`Remove "${query}" from recent searches`}
                         className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5"
-                        title="Remove"
                       >
                         <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -718,6 +727,7 @@ export default function Home() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
+              aria-current={activeTab === tab ? 'true' : undefined}
               className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors ${
                 activeTab === tab ? 'text-white' : 'text-zinc-600 hover:text-zinc-400'
               }`}

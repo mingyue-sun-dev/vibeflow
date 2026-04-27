@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { signIn, signUp } from '@/lib/auth';
 
 interface AuthModalProps {
@@ -14,6 +14,33 @@ export function AuthModal({ onClose, initialView = 'login' }: AuthModalProps) {
   const [password, setPassword] = useState('123456');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const FOCUSABLE = 'button:not([disabled]), input:not([disabled])';
+
+    function handleKeyDown(e: KeyboardEvent) {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab') return;
+
+      const els = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+      const first = els[0];
+      const last = els[els.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   function switchView(v: 'login' | 'signup') {
     setView(v);
@@ -46,7 +73,13 @@ export function AuthModal({ onClose, initialView = 'login' }: AuthModalProps) {
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-sm p-6 relative animate-fade-in">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={view === 'login' ? 'Log in' : 'Sign up'}
+        className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-sm p-6 relative animate-fade-in"
+      >
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-400 transition-colors"
@@ -57,11 +90,13 @@ export function AuthModal({ onClose, initialView = 'login' }: AuthModalProps) {
           </svg>
         </button>
 
-        <div className="flex gap-1 mb-6 bg-zinc-800 p-1 rounded-lg">
+        <div className="flex gap-1 mb-6 bg-zinc-800 p-1 rounded-lg" role="tablist">
           {(['login', 'signup'] as const).map((v) => (
             <button
               key={v}
               type="button"
+              role="tab"
+              aria-selected={view === v}
               onClick={() => switchView(v)}
               className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 view === v

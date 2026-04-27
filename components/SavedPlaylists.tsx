@@ -67,15 +67,15 @@ export function SavedPlaylists({
                 </button>
                 <button
                   onClick={() => copyShareLink(item.playlist_version_id, item.id)}
-                  className="shrink-0 text-zinc-700 hover:text-zinc-300 transition-colors opacity-0 group-hover:opacity-100 text-xs leading-none px-1"
-                  title="Copy share link"
+                  aria-label={copiedId === item.id ? `Link copied for "${item.name}"` : `Copy share link for "${item.name}"`}
+                  className="shrink-0 text-zinc-700 hover:text-zinc-300 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 text-xs leading-none px-1"
                 >
                   {copiedId === item.id ? '✓' : '↗'}
                 </button>
                 <button
                   onClick={() => onDelete(item.id)}
-                  className="shrink-0 text-zinc-700 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 text-xs leading-none px-1"
-                  title="Remove bookmark"
+                  aria-label={`Remove "${item.name}" from saved playlists`}
+                  className="shrink-0 text-zinc-700 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 text-xs leading-none px-1"
                 >
                   ✕
                 </button>

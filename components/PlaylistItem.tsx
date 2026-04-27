@@ -8,6 +8,7 @@ interface PlaylistItemProps {
   index: number;
   isNew?: boolean;
   isActive?: boolean;
+  isFocused?: boolean;
   onSelect?: (id: string) => void;
 }
 
@@ -26,9 +27,12 @@ function SpotifyIcon() {
   );
 }
 
-export function PlaylistItem({ song, index, isNew = false, isActive = false, onSelect }: PlaylistItemProps) {
+export function PlaylistItem({ song, index, isNew = false, isActive = false, isFocused = false, onSelect }: PlaylistItemProps) {
   return (
     <motion.div
+      role="option"
+      aria-selected={isActive}
+      aria-label={`${song.title} by ${song.artist}${isActive ? ', playing' : ''}`}
       layout
       initial={isNew ? { opacity: 0, x: -12, y: 0 } : { opacity: 0, x: 0, y: 10 }}
       animate={{ opacity: 1, x: 0, y: 0 }}
@@ -37,10 +41,10 @@ export function PlaylistItem({ song, index, isNew = false, isActive = false, onS
       onClick={() => onSelect?.(song.id)}
       className={`group flex items-center gap-3 px-4 py-2 transition-colors cursor-pointer ${
         isActive ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
-      } ${isNew ? 'song-new' : ''}`}
+      } ${isFocused && !isActive ? 'ring-1 ring-inset ring-zinc-600' : ''} ${isNew ? 'song-new' : ''}`}
     >
       {/* Index / playing indicator */}
-      <div className="w-4 shrink-0 flex items-center justify-center">
+      <div className="w-4 shrink-0 flex items-center justify-center" aria-hidden="true">
         {isActive ? (
           <span className="flex items-end gap-px h-3">
             <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '60%', animationDelay: '0ms', animationDuration: '0.8s' }} />
@@ -63,14 +67,14 @@ export function PlaylistItem({ song, index, isNew = false, isActive = false, onS
       </div>
 
       {/* Title + artist */}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1" aria-hidden="true">
         <p className="text-sm font-medium truncate leading-snug">{song.title}</p>
         <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
       </div>
 
       {/* Duration + Spotify link */}
       <div className="shrink-0 flex items-center gap-1.5">
-        <span className="text-xs text-zinc-700 tabular-nums font-mono">
+        <span className="text-xs text-zinc-700 tabular-nums font-mono" aria-hidden="true">
           {song.duration_ms ? formatDuration(song.duration_ms) : '—'}
         </span>
         {song.external_url && (
@@ -78,9 +82,11 @@ export function PlaylistItem({ song, index, isNew = false, isActive = false, onS
             href={song.external_url}
             target="_blank"
             rel="noopener noreferrer"
-            title="Open in Spotify"
+            aria-label={`Open "${song.title}" in Spotify`}
             onClick={e => e.stopPropagation()}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-zinc-300"
+            className={`transition-opacity text-zinc-600 hover:text-zinc-300 ${
+              isFocused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+            }`}
           >
             <SpotifyIcon />
           </a>
