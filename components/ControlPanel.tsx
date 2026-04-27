@@ -23,7 +23,7 @@ export function ControlPanel({ onQuickAction, disabled = false }: ControlPanelPr
             onClick={() => onQuickAction(label)}
             disabled={disabled}
             title={hint}
-            className="w-full text-left text-sm px-3 py-2.5 rounded-lg border border-transparent bg-zinc-800/60 text-zinc-400 disabled:opacity-25 disabled:cursor-not-allowed hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-200 active:scale-[0.98] transition-all"
+            className="w-full text-left text-sm px-3 py-2.5 rounded-lg border border-transparent bg-zinc-100 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 disabled:opacity-25 disabled:cursor-not-allowed hover:bg-zinc-200 dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:text-zinc-800 dark:hover:text-zinc-200 active:scale-[0.98] transition-all"
           >
             {label}
           </button>
@@ -32,7 +32,7 @@ export function ControlPanel({ onQuickAction, disabled = false }: ControlPanelPr
 
       {!disabled && (
         <div className="px-4 pb-4">
-          <p className="text-xs text-zinc-700 leading-relaxed">
+          <p className="text-xs text-zinc-400 dark:text-zinc-700 leading-relaxed">
             Or type any instruction in the chat.
           </p>
         </div>

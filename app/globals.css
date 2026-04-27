@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:is(.dark, .dark *));
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
@@ -25,11 +26,13 @@
   animation: highlightNew 1.8s ease-out forwards;
 }
 
-/* ── Thin, subtle scrollbars ─────────────────────────────── */
+/* ── Thin, subtle scrollbars (theme-aware) ───────────────── */
+:root { --scrollbar-thumb: #d4d4d8; }
+.dark { --scrollbar-thumb: #52525b; }
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 *::-webkit-scrollbar        { width: 4px; }
 *::-webkit-scrollbar-track  { background: transparent; }
-*::-webkit-scrollbar-thumb  { background-color: #3f3f46; border-radius: 999px; }
+*::-webkit-scrollbar-thumb  { background-color: var(--scrollbar-thumb); border-radius: 999px; }

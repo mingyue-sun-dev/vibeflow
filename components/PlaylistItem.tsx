@@ -40,41 +40,41 @@ export function PlaylistItem({ song, index, isNew = false, isActive = false, isF
       transition={{ duration: 0.25, delay: isNew ? 0 : index * 0.035, ease: 'easeOut' }}
       onClick={() => onSelect?.(song.id)}
       className={`group flex items-center gap-3 px-4 py-2 transition-colors cursor-pointer ${
-        isActive ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
-      } ${isFocused && !isActive ? 'ring-1 ring-inset ring-zinc-600' : ''} ${isNew ? 'song-new' : ''}`}
+        isActive ? 'bg-zinc-100 dark:bg-zinc-800' : 'hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50'
+      } ${isFocused && !isActive ? 'ring-1 ring-inset ring-zinc-300 dark:ring-zinc-600' : ''} ${isNew ? 'song-new' : ''}`}
     >
       {/* Index / playing indicator */}
       <div className="w-4 shrink-0 flex items-center justify-center" aria-hidden="true">
         {isActive ? (
           <span className="flex items-end gap-px h-3">
-            <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '60%', animationDelay: '0ms', animationDuration: '0.8s' }} />
-            <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '100%', animationDelay: '150ms', animationDuration: '0.8s' }} />
-            <span className="w-px bg-zinc-400 animate-bounce" style={{ height: '40%', animationDelay: '300ms', animationDuration: '0.8s' }} />
+            <span className="w-px bg-zinc-500 dark:bg-zinc-400 animate-bounce" style={{ height: '60%', animationDelay: '0ms', animationDuration: '0.8s' }} />
+            <span className="w-px bg-zinc-500 dark:bg-zinc-400 animate-bounce" style={{ height: '100%', animationDelay: '150ms', animationDuration: '0.8s' }} />
+            <span className="w-px bg-zinc-500 dark:bg-zinc-400 animate-bounce" style={{ height: '40%', animationDelay: '300ms', animationDuration: '0.8s' }} />
           </span>
         ) : (
-          <span className="text-xs text-zinc-700 tabular-nums">{index + 1}</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-700 tabular-nums">{index + 1}</span>
         )}
       </div>
 
       {/* Album image */}
-      <div className="w-8 h-8 rounded bg-zinc-800 shrink-0 overflow-hidden">
+      <div className="w-8 h-8 rounded bg-zinc-200 dark:bg-zinc-800 shrink-0 overflow-hidden">
         {song.album_image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={song.album_image} alt="" className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full bg-zinc-800" />
+          <div className="w-full h-full bg-zinc-200 dark:bg-zinc-800" />
         )}
       </div>
 
       {/* Title + artist */}
       <div className="min-w-0 flex-1" aria-hidden="true">
         <p className="text-sm font-medium truncate leading-snug">{song.title}</p>
-        <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
+        <p className="text-xs text-zinc-500 truncate leading-snug">{song.artist}</p>
       </div>
 
       {/* Duration + Spotify link */}
       <div className="shrink-0 flex items-center gap-1.5">
-        <span className="text-xs text-zinc-700 tabular-nums font-mono" aria-hidden="true">
+        <span className="text-xs text-zinc-400 dark:text-zinc-700 tabular-nums font-mono" aria-hidden="true">
           {song.duration_ms ? formatDuration(song.duration_ms) : '—'}
         </span>
         {song.external_url && (
@@ -84,7 +84,7 @@ export function PlaylistItem({ song, index, isNew = false, isActive = false, isF
             rel="noopener noreferrer"
             aria-label={`Open "${song.title}" in Spotify`}
             onClick={e => e.stopPropagation()}
-            className={`transition-opacity text-zinc-600 hover:text-zinc-300 ${
+            className={`transition-opacity text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 ${
               isFocused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
             }`}
           >

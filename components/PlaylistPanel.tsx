@@ -74,8 +74,8 @@ export function PlaylistPanel({
   if (songs.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-6">
-        <p className="text-zinc-600 text-sm">No playlist yet</p>
-        <p className="text-zinc-700 text-xs">Generate a playlist to get started.</p>
+        <p className="text-zinc-400 dark:text-zinc-600 text-sm">No playlist yet</p>
+        <p className="text-zinc-400 dark:text-zinc-700 text-xs">Generate a playlist to get started.</p>
       </div>
     );
   }
@@ -83,9 +83,9 @@ export function PlaylistPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Mood + version label */}
-      <div className="px-4 py-2.5 border-b border-zinc-800 shrink-0 flex items-center justify-between gap-2">
+      <div className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0 flex items-center justify-between gap-2">
         <p className="text-xs text-zinc-500 truncate">
-          <span className="text-zinc-400 font-medium">v{currentVersion}</span>
+          <span className="text-zinc-600 dark:text-zinc-400 font-medium">v{currentVersion}</span>
           {' · '}
           <span className="italic">{mood}</span>
         </p>
@@ -93,7 +93,7 @@ export function PlaylistPanel({
           <button
             onClick={copyShareLink}
             aria-label={copied ? 'Share link copied' : 'Copy share link'}
-            className="shrink-0 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+            className="shrink-0 text-xs text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
           >
             {copied ? 'Copied!' : 'Share'}
           </button>
@@ -109,7 +109,7 @@ export function PlaylistPanel({
         onFocus={() => setListHasFocus(true)}
         onBlur={() => setListHasFocus(false)}
         onKeyDown={handleListKeyDown}
-        className={`flex-1 overflow-y-auto transition-opacity duration-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-zinc-700 ${
+        className={`flex-1 overflow-y-auto transition-opacity duration-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-zinc-300 dark:focus-visible:ring-zinc-700 ${
           isTransforming ? 'opacity-40 pointer-events-none' : 'opacity-100'
         }`}
       >

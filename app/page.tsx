@@ -10,6 +10,7 @@ import { PlaylistPanel } from '@/components/PlaylistPanel';
 import { ChatPanel, LocalMessage } from '@/components/ChatPanel';
 import { ControlPanel } from '@/components/ControlPanel';
 import { SavedPlaylists } from '@/components/SavedPlaylists';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function Home() {
   const [mood, setMood] = useState('');
@@ -58,6 +59,7 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transformAbortRef = useRef<AbortController | null>(null);
+  const restoredUserIdRef = useRef<string | null>(null);
 
   // Global Esc → cancel in-progress transform
   useEffect(() => {
@@ -79,11 +81,15 @@ export default function Home() {
       setUser(u);
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
         if (u) {
-          restoreSession(u.id);
+          if (restoredUserIdRef.current !== u.id) {
+            restoredUserIdRef.current = u.id;
+            restoreSession(u.id);
+          }
         } else {
           setIsRestoring(false);
         }
       } else if (event === 'SIGNED_OUT') {
+        restoredUserIdRef.current = null;
         clearPlaylistState();
         setIsRestoring(false);
       }
@@ -367,8 +373,8 @@ export default function Home() {
             <div className="flex items-center justify-center gap-2 pt-1">
               {['Mood', 'Playlist', 'Refine'].map((step, i, arr) => (
                 <span key={step} className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-700">{step}</span>
-                  {i < arr.length - 1 && <span className="text-zinc-800 text-xs">→</span>}
+                  <span className="text-xs text-zinc-400 dark:text-zinc-700">{step}</span>
+                  {i < arr.length - 1 && <span className="text-zinc-300 dark:text-zinc-800 text-xs">→</span>}
                 </span>
               ))}
             </div>
@@ -380,7 +386,7 @@ export default function Home() {
                 <button
                   key={prompt}
                   onClick={() => setMood(prompt)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                  className="text-xs px-3 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
                 >
                   {prompt}
                 </button>
@@ -400,12 +406,12 @@ export default function Home() {
                 onBlur={() => setShowHistory(false)}
                 placeholder="e.g. relaxed Sunday morning..."
                 disabled={isGenerating}
-                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-4 py-2.5 text-sm placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 onClick={handleGenerate}
                 disabled={!mood.trim() || isGenerating}
-                className="bg-white text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-95 transition-all shrink-0"
+                className="bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-zinc-700 dark:hover:bg-zinc-200 active:scale-95 transition-all shrink-0"
               >
                 {isGenerating ? (
                   <span className="flex items-center gap-2">
@@ -419,24 +425,24 @@ export default function Home() {
             </div>
 
             {showHistory && searchHistory.length > 0 && !mood.trim() && (
-              <div className="absolute top-full left-0 right-12 mt-1.5 bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
-                <p className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
+              <div className="absolute top-full left-0 right-12 mt-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg p-3 shadow-xl z-10 text-left animate-fade-in">
+                <p className="text-xs text-zinc-400 dark:text-zinc-600 uppercase tracking-wider mb-2">Recent</p>
                 <div className="flex flex-wrap gap-1.5">
                   {searchHistory.map((query) => (
                     <div
                       key={query}
-                      className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors"
+                      className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full pl-3 pr-1.5 py-1 transition-colors"
                     >
                       <button
                         onMouseDown={(e) => { e.preventDefault(); setMood(query); }}
-                        className="text-xs text-zinc-300 whitespace-nowrap"
+                        className="text-xs text-zinc-700 dark:text-zinc-300 whitespace-nowrap"
                       >
                         {query}
                       </button>
                       <button
                         onMouseDown={(e) => { e.preventDefault(); removeFromHistory(query); }}
                         aria-label={`Remove "${query}" from recent searches`}
-                        className="text-zinc-600 hover:text-zinc-300 transition-colors p-0.5"
+                        className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors p-0.5"
                       >
                         <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -464,7 +470,7 @@ export default function Home() {
           <p className="text-zinc-500 text-sm">Log in to generate and save playlists.</p>
           <button
             onClick={() => setShowAuthModal(true)}
-            className="bg-white text-zinc-950 rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-zinc-200 active:scale-95 transition-all"
+            className="bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-zinc-700 dark:hover:bg-zinc-200 active:scale-95 transition-all"
           >
             Log in
           </button>
@@ -476,7 +482,7 @@ export default function Home() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold tracking-tight">VibeFlow</span>
           <span className="text-xs text-zinc-500 font-mono hidden sm:block">
@@ -484,10 +490,11 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           {hasPlaylist && (
             <button
               onClick={handleNewPlaylist}
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
             >
               New playlist
             </button>
@@ -499,7 +506,7 @@ export default function Home() {
               </span>
               <button
                 onClick={() => signOut()}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
               >
                 Log out
               </button>
@@ -507,7 +514,7 @@ export default function Home() {
           ) : (
             <button
               onClick={() => setShowAuthModal(true)}
-              className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
+              className="text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
             >
               Log in
             </button>
@@ -519,12 +526,12 @@ export default function Home() {
       <div className="hidden md:flex flex-1 overflow-hidden">
 
         {/* Left — Playlist */}
-        <aside className="w-72 shrink-0 border-r border-zinc-800 flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+        <aside className="w-72 shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+            <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
               Playlist
               {hasPlaylist && (
-                <span className="ml-2 text-zinc-600 normal-case font-normal">
+                <span className="ml-2 text-zinc-400 dark:text-zinc-600 normal-case font-normal">
                   {songs.length} tracks
                 </span>
               )}
@@ -549,7 +556,7 @@ export default function Home() {
             </div>
           )}
           {activeSongId && (
-            <div className="shrink-0 border-t border-zinc-800">
+            <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-800">
               <iframe
                 key={activeSongId}
                 src={`https://open.spotify.com/embed/track/${activeSongId}?utm_source=generator&theme=0`}
@@ -566,8 +573,8 @@ export default function Home() {
 
         {/* Center — Login prompt, Mood input, or Chat */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+            <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
               {hasPlaylist ? 'Refine' : 'Generate'}
             </h2>
           </div>
@@ -587,9 +594,9 @@ export default function Home() {
         </main>
 
         {/* Right — Controls + Saved */}
-        <aside className="w-56 shrink-0 border-l border-zinc-800 flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Controls</h2>
+        <aside className="w-56 shrink-0 border-l border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+            <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Controls</h2>
           </div>
           <div className="flex-1 overflow-y-auto flex flex-col">
             <ControlPanel
@@ -615,11 +622,11 @@ export default function Home() {
 
           {activeTab === 'playlist' && (
             <>
-              <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-                <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+                <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                   Playlist
                   {hasPlaylist && (
-                    <span className="ml-2 text-zinc-600 normal-case font-normal">{songs.length} tracks</span>
+                    <span className="ml-2 text-zinc-400 dark:text-zinc-600 normal-case font-normal">{songs.length} tracks</span>
                   )}
                 </h2>
               </div>
@@ -644,8 +651,8 @@ export default function Home() {
 
           {activeTab === 'chat' && (
             <>
-              <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-                <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+              <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+                <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                   {hasPlaylist ? 'Refine' : 'Generate'}
                 </h2>
               </div>
@@ -668,8 +675,8 @@ export default function Home() {
 
           {activeTab === 'controls' && (
             <>
-              <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
-                <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Controls</h2>
+              <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+                <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Controls</h2>
               </div>
               <div className="flex-1 overflow-y-auto flex flex-col">
                 <ControlPanel
@@ -691,7 +698,7 @@ export default function Home() {
 
         {/* Persistent embed player — survives tab switches */}
         {activeSongId && (
-          <div className="shrink-0 border-t border-zinc-800">
+          <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-800">
             <iframe
               key={activeSongId}
               src={`https://open.spotify.com/embed/track/${activeSongId}?utm_source=generator&theme=0`}
@@ -706,7 +713,7 @@ export default function Home() {
         )}
 
         {/* Bottom tab bar */}
-        <nav className="border-t border-zinc-800 shrink-0 flex bg-zinc-950">
+        <nav className="border-t border-zinc-200 dark:border-zinc-800 shrink-0 flex bg-white dark:bg-zinc-950">
           {([
             { tab: 'playlist', label: 'Playlist', icon: (
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -729,7 +736,7 @@ export default function Home() {
               onClick={() => setActiveTab(tab)}
               aria-current={activeTab === tab ? 'true' : undefined}
               className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors ${
-                activeTab === tab ? 'text-white' : 'text-zinc-600 hover:text-zinc-400'
+                activeTab === tab ? 'text-zinc-900 dark:text-white' : 'text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'
               }`}
             >
               {icon}
@@ -751,13 +758,13 @@ function PlaylistSkeleton() {
     <div className="flex-1 px-4 py-3 space-y-3">
       {Array.from({ length: 7 }).map((_, i) => (
         <div key={i} className="flex items-center gap-3 animate-pulse">
-          <div className="w-4 h-3 bg-zinc-800 rounded shrink-0" />
-          <div className="w-8 h-8 bg-zinc-800 rounded shrink-0" />
+          <div className="w-4 h-3 bg-zinc-200 dark:bg-zinc-800 rounded shrink-0" />
+          <div className="w-8 h-8 bg-zinc-200 dark:bg-zinc-800 rounded shrink-0" />
           <div className="flex-1 space-y-1.5">
-            <div className="h-3 bg-zinc-800 rounded w-3/4" />
-            <div className="h-2.5 bg-zinc-800/60 rounded w-1/2" />
+            <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
+            <div className="h-2.5 bg-zinc-200/60 dark:bg-zinc-800/60 rounded w-1/2" />
           </div>
-          <div className="w-8 h-2.5 bg-zinc-800 rounded shrink-0" />
+          <div className="w-8 h-2.5 bg-zinc-200 dark:bg-zinc-800 rounded shrink-0" />
         </div>
       ))}
     </div>

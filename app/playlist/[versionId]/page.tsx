@@ -58,19 +58,19 @@ export default async function SharedPlaylistPage({ params }: Props) {
   const { mood, songs } = version.playlist_json as { mood: string; songs: Song[] };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+    <main className="min-h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <header className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between">
         <a
           href="/"
-          className="text-sm font-semibold tracking-tight hover:text-zinc-300 transition-colors"
+          className="text-sm font-semibold tracking-tight hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
         >
           VibeFlow
         </a>
-        <span className="text-xs text-zinc-600">shared playlist</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-600">shared playlist</span>
       </header>
 
       <div className="max-w-xl mx-auto px-4 py-10">
-        <h1 className="text-2xl font-semibold text-zinc-100 mb-1">{mood}</h1>
+        <h1 className="text-2xl font-semibold mb-1">{mood}</h1>
         <p className="text-sm text-zinc-500 mb-8">{songs.length} tracks</p>
 
         <div className="space-y-0.5">
@@ -80,12 +80,12 @@ export default async function SharedPlaylistPage({ params }: Props) {
               href={song.external_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/60 transition-colors"
+              className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
             >
-              <span className="w-5 text-right text-xs text-zinc-700 tabular-nums shrink-0">
+              <span className="w-5 text-right text-xs text-zinc-400 dark:text-zinc-700 tabular-nums shrink-0">
                 {i + 1}
               </span>
-              <div className="w-9 h-9 rounded bg-zinc-800 shrink-0 overflow-hidden">
+              <div className="w-9 h-9 rounded bg-zinc-200 dark:bg-zinc-800 shrink-0 overflow-hidden">
                 {song.album_image && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={song.album_image} alt="" className="w-full h-full object-cover" />
@@ -95,18 +95,18 @@ export default async function SharedPlaylistPage({ params }: Props) {
                 <p className="text-sm font-medium truncate">{song.title}</p>
                 <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
               </div>
-              <span className="text-xs text-zinc-700 tabular-nums font-mono shrink-0">
+              <span className="text-xs text-zinc-400 dark:text-zinc-700 tabular-nums font-mono shrink-0">
                 {formatDuration(song.duration_ms)}
               </span>
             </a>
           ))}
         </div>
 
-        <div className="mt-10 pt-8 border-t border-zinc-800 text-center">
+        <div className="mt-10 pt-8 border-t border-zinc-200 dark:border-zinc-800 text-center">
           <p className="text-sm text-zinc-500 mb-3">Like this vibe?</p>
           <a
             href="/"
-            className="inline-block bg-zinc-100 text-zinc-900 text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-white transition-colors"
+            className="inline-block bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-zinc-700 dark:hover:bg-white transition-colors"
           >
             Create your own playlist
           </a>

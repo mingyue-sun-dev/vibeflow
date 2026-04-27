@@ -24,7 +24,7 @@ export function VersionHistory({ versions, currentVersion, onRevert }: VersionHi
   }
 
   return (
-    <div className="border-t border-zinc-800 shrink-0">
+    <div className="border-t border-zinc-200 dark:border-zinc-800 shrink-0">
       <div className="px-4 pt-3 pb-1">
         <h3 className="text-xs text-zinc-500 uppercase tracking-wider">History</h3>
       </div>
@@ -40,20 +40,20 @@ export function VersionHistory({ versions, currentVersion, onRevert }: VersionHi
               disabled={isCurrent}
               className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between gap-2 ${
                 isCurrent
-                  ? 'bg-zinc-800 cursor-default'
-                  : 'hover:bg-zinc-800/60 cursor-pointer'
+                  ? 'bg-zinc-100 dark:bg-zinc-800 cursor-default'
+                  : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/60 cursor-pointer'
               }`}
             >
               {/* Left: version + mood */}
               <div className="min-w-0 flex items-center gap-2">
                 <span
                   className={`font-mono text-xs shrink-0 ${
-                    isCurrent ? 'text-white' : 'text-zinc-500'
+                    isCurrent ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'
                   }`}
                 >
                   v{v.version_number}
                 </span>
-                <span className="text-xs text-zinc-600 truncate italic">
+                <span className="text-xs text-zinc-400 dark:text-zinc-600 truncate italic">
                   {v.playlist_json.mood}
                 </span>
               </div>
@@ -70,10 +70,10 @@ export function VersionHistory({ versions, currentVersion, onRevert }: VersionHi
                     )}
                   </>
                 ) : (
-                  <span className="text-zinc-700">{v.playlist_json.songs.length}</span>
+                  <span className="text-zinc-400 dark:text-zinc-700">{v.playlist_json.songs.length}</span>
                 )}
                 {isCurrent && (
-                  <span className="ml-1 text-zinc-600">·</span>
+                  <span className="ml-1 text-zinc-400 dark:text-zinc-600">·</span>
                 )}
               </div>
             </button>
