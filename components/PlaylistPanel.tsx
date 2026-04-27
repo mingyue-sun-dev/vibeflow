@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Song, PlaylistVersion } from '@/types';
 import { PlaylistItem } from './PlaylistItem';
@@ -15,6 +16,7 @@ interface PlaylistPanelProps {
   onRevert: (version: PlaylistVersion) => void;
   activeSongId: string | null;
   onSongSelect: (id: string) => void;
+  versionId?: string | null;
 }
 
 export function PlaylistPanel({
@@ -27,7 +29,17 @@ export function PlaylistPanel({
   onRevert,
   activeSongId,
   onSongSelect,
+  versionId,
 }: PlaylistPanelProps) {
+  const [copied, setCopied] = useState(false);
+
+  function copyShareLink() {
+    if (!versionId) return;
+    navigator.clipboard.writeText(`${window.location.origin}/playlist/${versionId}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   if (songs.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-6">
@@ -40,12 +52,21 @@ export function PlaylistPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Mood + version label */}
-      <div className="px-4 py-2.5 border-b border-zinc-800 shrink-0">
+      <div className="px-4 py-2.5 border-b border-zinc-800 shrink-0 flex items-center justify-between gap-2">
         <p className="text-xs text-zinc-500 truncate">
           <span className="text-zinc-400 font-medium">v{currentVersion}</span>
           {' · '}
           <span className="italic">{mood}</span>
         </p>
+        {versionId && (
+          <button
+            onClick={copyShareLink}
+            className="shrink-0 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+            title="Copy share link"
+          >
+            {copied ? 'Copied!' : 'Share'}
+          </button>
+        )}
       </div>
 
       {/* Song list — dims while AI is transforming */}

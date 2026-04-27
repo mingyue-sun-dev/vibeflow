@@ -315,6 +315,7 @@ export default function Home() {
     flashNewSongs(songs, pj.songs);
     setSongs(pj.songs);
     setCurrentMood(pj.mood);
+    setCurrentVersionId(saved.playlist_version_id);
     setMessages((prev) => [
       ...prev,
       { role: 'assistant', content: `Loaded saved playlist: "${saved.name}"` },
@@ -534,6 +535,7 @@ export default function Home() {
                 onRevert={handleRevert}
                 activeSongId={activeSongId}
                 onSongSelect={handleSongSelect}
+                versionId={currentVersionId}
               />
             </div>
           )}
@@ -624,6 +626,7 @@ export default function Home() {
                     onRevert={handleRevert}
                     activeSongId={activeSongId}
                     onSongSelect={handleSongSelect}
+                    versionId={currentVersionId}
                   />
                 </div>
               )}

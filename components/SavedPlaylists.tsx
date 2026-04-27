@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { SavedPlaylist } from '@/types';
 
 interface SavedPlaylistsProps {
@@ -19,6 +20,14 @@ export function SavedPlaylists({
   canSave,
   isSaving,
 }: SavedPlaylistsProps) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function copyShareLink(versionId: string, itemId: string) {
+    navigator.clipboard.writeText(`${window.location.origin}/playlist/${versionId}`);
+    setCopiedId(itemId);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
   return (
     <div className="border-t border-zinc-800 flex flex-col shrink-0">
       {/* Header + save button */}
@@ -55,6 +64,13 @@ export function SavedPlaylists({
                 >
                   <p className="text-xs text-zinc-300 truncate">{item.name}</p>
                   <p className="text-[10px] text-zinc-600">{trackCount} tracks</p>
+                </button>
+                <button
+                  onClick={() => copyShareLink(item.playlist_version_id, item.id)}
+                  className="shrink-0 text-zinc-700 hover:text-zinc-300 transition-colors opacity-0 group-hover:opacity-100 text-xs leading-none px-1"
+                  title="Copy share link"
+                >
+                  {copiedId === item.id ? '✓' : '↗'}
                 </button>
                 <button
                   onClick={() => onDelete(item.id)}
